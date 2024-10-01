@@ -15,7 +15,7 @@
 %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-Nxy = 128;
+Nxy = 256;
 Nz = 30;
 lat = 27;
 
@@ -37,8 +37,8 @@ L = 5*(2*pi/k_sd1);
 %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-if ~exist('spun-up-qg-field.nc','file')
-    wvt_qg = WVTransformHydrostatic([L, L, Lz],[Nxy, Nxy, Nz], N2=N2,latitude=lat);
+if ~exist('spun-up-qg-field-128.nc','file')
+    wvt_qg = WVTransformHydrostatic([L, L, Lz],[128, 128, Nz], N2=N2,latitude=lat);
 
     % First barolinic mode plus a barotropic mode so that the bottom velocity
     % is zero.
@@ -56,10 +56,24 @@ if ~exist('spun-up-qg-field.nc','file')
     model = WVModel(wvt_qg,nonlinearFlux=nlFlux);
     model.integrateToTime(2000*86400);
 
-    wvt_qg.writeToFile('spun-up-qg-field.nc')
+    wvt_qg.writeToFile('spun-up-qg-field-128.nc');
 else
-    wvt_qg = WVTransform.waveVortexTransformFromFile('spun-up-qg-field.nc');
+    wvt_qg = WVTransform.waveVortexTransformFromFile('spun-up-qg-field-128.nc');
 end
+
+%%
+if ~exist('spun-up-qg-field-256.nc','file')
+    wvt_qg = wvt_qg.waveVortexTransformWithResolution([256 256 Nz]);
+    model = WVModel(wvt_qg);
+    model.setupIntegrator(relTolerance=1e-3);
+    model.integrateToTime(wvt_qg.t + 50*86400);
+
+    wvt_qg.writeToFile('spun-up-qg-field-256.nc');
+end
+
+Ekj = wvt_qg.transformToRadialWavenumber( wvt_qg.A0_TE_factor .* (abs(wvt_qg.A0).^2));
+figure, plot(wvt_qg.kRadial,sum(Ekj,1)), xlog, ylog, xlabel('k'), ylabel('energy'), title(sprintf('geostrophic energy spectrum, day %d',round(wvt_qg.t/86400)))
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %
@@ -108,7 +122,7 @@ j = 1;
 k0 = k_sd1;
 L = 75e3;
 dTheta = 0.6;
-sshAmplitude = 3.0e-2;
+sshAmplitude = 2.2e-2;
 
 % randomize amplitudes, and restrict to the wavenumbers (with a
 % gaussian) and vertical mode of interest.
@@ -144,19 +158,28 @@ fprintf('Tidal amplitudes are umax: %.1f cm/s and ssh_max: %.1f cm\n',wvt.uvMax*
 wvt.removeAll;
 
 wvt.initWithGMSpectrum();
-wvt.Ap(wvt.Kh > 3*wvt.dk) = 0;
-wvt.Am(wvt.Kh > 3*wvt.dk) = 0;
-wvt.Ap(wvt.Kh == 0) = 0;
-wvt.Am(wvt.Kh == 0) = 0;
 
-Ld = 500;
-taper = exp((wvt.Z/Ld));
-wvt.initWithUVEta(wvt.u .* taper, wvt.v .* taper, wvt.eta .* taper );
+if 0
+    wvt.Ap(wvt.Kh > 3*wvt.dk) = 0;
+    wvt.Am(wvt.Kh > 3*wvt.dk) = 0;
+    wvt.Ap(wvt.Kh == 0) = 0;
+    wvt.Am(wvt.Kh == 0) = 0;
 
-wvt.Ap(wvt.Kh > 3*wvt.dk) = 0;
-wvt.Am(wvt.Kh > 3*wvt.dk) = 0;
-wvt.Ap(wvt.Kh == 0) = 0;
-wvt.Am(wvt.Kh == 0) = 0;
+    Ld = 500;
+    taper = exp((wvt.Z/Ld));
+    wvt.initWithUVEta(wvt.u .* taper, wvt.v .* taper, wvt.eta .* taper );
+
+    wvt.Ap(wvt.Kh > 3*wvt.dk) = 0;
+    wvt.Am(wvt.Kh > 3*wvt.dk) = 0;
+    wvt.Ap(wvt.Kh == 0) = 0;
+    wvt.Am(wvt.Kh == 0) = 0;
+else
+    wvt.Ap(wvt.Kh > 0) = 0;
+    wvt.Am(wvt.Kh > 0) = 0;
+    Ld = 500;
+    taper = exp((wvt.Z/Ld));
+    wvt.initWithUVEta(wvt.u .* taper, wvt.v .* taper, wvt.eta .* taper );
+end
 
 ApIO = wvt.Ap;
 AmIO = wvt.Am;
@@ -175,8 +198,8 @@ wvt.Ap(abs(Ap_forcing) > 0) = Ap_forcing(abs(Ap_forcing) > 0);
 wvt.Am(abs(Am_forcing) > 0) = Am_forcing(abs(Am_forcing) > 0);
 
 % Get rid of the inertial stuff...
-wvt.Ap(wvt.Kh == 0) = 0;
-wvt.Am(wvt.Kh == 0) = 0;
+% wvt.Ap(wvt.Kh == 0) = 0;
+% wvt.Am(wvt.Kh == 0) = 0;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %
@@ -304,6 +327,6 @@ nexttile(tl1,4), plot(100*sqrt(squeeze(mean(mean(wvt.u.^2 + wvt.v.^2,1),2))),wvt
 
 %%
 
-model.createNetCDFFileForModelOutput("dmd-eddy-tide.nc",shouldOverwriteExisting=0);
+model.createNetCDFFileForModelOutput("dmd-eddy-tide.nc",shouldOverwriteExisting=0,outputInterval=1800);
 model.addNetCDFOutputVariables('ssh_w','ssh','ssh_pv');
-model.integrateToTime(t0+40*86400)
+model.integrateToTime(t0+80*86400)
